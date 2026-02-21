@@ -1,7 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
-const UserAgent = require('fake-useragent');
 
 const app = express();
 
@@ -10,7 +9,11 @@ const jsongen = async (url) => {
     const headers = {
       'X-Signature-Version': 'web2',
       'X-Signature': crypto.randomBytes(32).toString('hex'),
-      'User-Agent': new UserAgent().random,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://hanime.tv/',
+      'Origin': 'https://hanime.tv',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
     };
     const res = await axios.get(url, { headers });
     return res.data;
@@ -82,15 +85,29 @@ const getBrowseVideos = async (type, category, page) => {
   }));
 };
 
+const searchVideos = async (query, page = 0) => {
+  const url = `https://hanime.tv/api/v8/search?search_text=${encodeURIComponent(query)}&page=${page}&order_by=views&ordering=desc`;
+  const data = await jsongen(url);
+  return data.hentai_videos.map((x) => ({
+    id: x.id,
+    name: x.name,
+    slug: x.slug,
+    cover_url: x.cover_url,
+    views: x.views,
+    link: `/watch/${x.slug}`,
+  }));
+};
+
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to Hanime API 👀',
     endpoints: [
-      '/trending/:time/:page  (time: day | week | month)',
-      '/watch/:slug',
-      '/browse/:type  (type: hentai_tags | brands)',
-      '/tags',
-      '/:type/:category/:page',
+      'GET /trending/:time/:page  — time: day | week | month',
+      'GET /watch/:slug',
+      'GET /browse/:type  — type: hentai_tags | brands',
+      'GET /tags',
+      'GET /search/:query/:page',
+      'GET /:type/:category/:page',
     ],
   });
 });
@@ -144,6 +161,19 @@ app.get('/tags', async (req, res, next) => {
       url: `/tags/${x.text}/0`,
     }));
     res.json({ results: jsondata });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/search/:query/:page', async (req, res, next) => {
+  try {
+    const { query, page } = req.params;
+    const data = await searchVideos(query, page);
+    res.json({
+      results: data,
+      next_page: `/search/${query}/${parseInt(page) + 1}`,
+    });
   } catch (error) {
     next(error);
   }
