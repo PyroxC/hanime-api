@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
+const puppeteer = require('puppeteer');
 
 const app = express();
 
@@ -19,6 +20,50 @@ const jsongen = async (url) => {
     return res.data;
   } catch (error) {
     throw new Error(`Error fetching data: ${error.message}`);
+  }
+};
+
+const getStreamUrl = async (slug) => {
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+    ],
+  });
+
+  try {
+    const page = await browser.newPage();
+    let streamUrl = null;
+
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
+    page.on('request', (req) => {
+      const url = req.url();
+      if (url.includes('.m3u8') && !streamUrl) {
+        streamUrl = url;
+      }
+    });
+
+    await page.goto(`https://hanime.tv/videos/hentai/${slug}`, {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    await new Promise((r) => setTimeout(r, 5000));
+
+    await browser.close();
+    return streamUrl;
+  } catch (error) {
+    await browser.close();
+    throw new Error(`Puppeteer error: ${error.message}`);
   }
 };
 
@@ -41,12 +86,6 @@ const getVideo = async (slug) => {
     name: t.text,
     link: `/hentai-tags/${t.text}/0`,
   }));
-  const streams = videoData.videos_manifest.servers[0].streams.map((s) => ({
-    width: s.width,
-    height: s.height,
-    size_mbs: s.filesize_mbs,
-    url: s.url,
-  }));
   const episodes = videoData.hentai_franchise_hentai_videos.map((e) => ({
     id: e.id,
     name: e.name,
@@ -55,17 +94,16 @@ const getVideo = async (slug) => {
     views: e.views,
     link: `/watch/${e.slug}`,
   }));
-  return [{
+  return {
     id: videoData.hentai_video.id,
     name: videoData.hentai_video.name,
     description: videoData.hentai_video.description,
     poster_url: videoData.hentai_video.poster_url,
     cover_url: videoData.hentai_video.cover_url,
     views: videoData.hentai_video.views,
-    streams,
     tags,
     episodes,
-  }];
+  };
 };
 
 const getBrowse = async () => {
@@ -98,12 +136,15 @@ const searchVideos = async (query, page = 0) => {
   }));
 };
 
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to Hanime API 👀',
     endpoints: [
       'GET /trending/:time/:page  — time: day | week | month',
       'GET /watch/:slug',
+      'GET /stream/:slug  — real m3u8 stream URL',
       'GET /browse/:type  — type: hentai_tags | brands',
       'GET /tags',
       'GET /search/:query/:page',
@@ -112,10 +153,24 @@ app.get('/', (req, res) => {
   });
 });
 
+// Video info (no stream)
 app.get('/watch/:slug', async (req, res, next) => {
   try {
-    const jsondata = await getVideo(req.params.slug);
-    res.json({ results: jsondata });
+    const data = await getVideo(req.params.slug);
+    res.json({ results: [data] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Real stream URL via Puppeteer
+app.get('/stream/:slug', async (req, res, next) => {
+  try {
+    const streamUrl = await getStreamUrl(req.params.slug);
+    if (!streamUrl) {
+      return res.status(404).json({ error: 'Stream URL not found' });
+    }
+    res.json({ stream_url: streamUrl });
   } catch (error) {
     next(error);
   }
