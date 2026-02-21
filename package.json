@@ -1,19 +1,13 @@
 {
   "name": "hanime-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "Hanime API wrapper",
   "main": "src/app.js",
   "scripts": {
-    "test": "node ."
+    "start": "node src/app.js",
+    "dev": "node src/app.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Lishan778/hanime-api"
-  },
-  "keywords": [
-    "hanime",
-    "hanime-api"
-  ],
+  "keywords": ["hanime", "hanime-api"],
   "author": "shaan",
   "license": "ISC",
   "dependencies": {
@@ -23,3 +17,12 @@
     "fake-useragent": "^1.0.1"
   }
 }
+```
+
+---
+
+**`.gitignore`**
+```
+node_modules/
+.env
+.vercel
